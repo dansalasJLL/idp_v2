@@ -1,0 +1,6 @@
+pytest>=8.0.0
+
+# Only needed to regenerate tests/sample_synthetic_msa.pdf if it's ever
+# deleted or you want to add more test fixtures — not needed to run the app
+# or the test suite itself.
+# reportlab>=4.0.0
