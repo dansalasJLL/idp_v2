@@ -25,6 +25,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from i18n import t, label, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
+
 # --------------------------------------------------------------------------- #
 # Constants
 # --------------------------------------------------------------------------- #
@@ -81,53 +83,55 @@ def render_obligation(o, key_prefix=""):
     is_done = oid in st.session_state.done
 
     top = st.columns([1, 1, 1, 1])
-    top[0].markdown(pill(o["priority"] + " priority", PRIORITY_COLOR[o["priority"]]), unsafe_allow_html=True)
+    pri_label = f"{label('priority', o['priority'])} {t('priority_suffix')}"
+    top[0].markdown(pill(pri_label, PRIORITY_COLOR[o["priority"]]), unsafe_allow_html=True)
     rlvl = o.get("risk_level", "Low")
     rtype = o.get("risk_type", "None")
     ricon = RISK_TYPE_ICON.get(rtype, "•")
-    top[1].markdown(pill(f"{ricon} {rlvl} risk · {rtype}", RISK_COLOR.get(rlvl, "#8A8A8A")), unsafe_allow_html=True)
-    top[2].markdown(f"**Party:** {o['responsible_party']}")
+    risk_pill_label = f"{ricon} {label('risk_level', rlvl)} {t('risk_suffix')} · {label('risk_type', rtype)}"
+    top[1].markdown(pill(risk_pill_label, RISK_COLOR.get(rlvl, "#8A8A8A")), unsafe_allow_html=True)
+    top[2].markdown(f"**{t('party_label_short')}:** {label('responsible_party', o['responsible_party'])}")
     conf = o["confidence"]
     conf_c = "#2E7D32" if conf >= 0.85 else ("#B9770E" if conf >= 0.70 else "#C0392B")
-    top[3].markdown(f"**Confidence:** <span style='color:{conf_c}'>{conf:.0%}</span>", unsafe_allow_html=True)
+    top[3].markdown(f"**{t('confidence_label')}:** <span style='color:{conf_c}'>{conf:.0%}</span>", unsafe_allow_html=True)
 
-    st.markdown(pill(o["category"], BLUE), unsafe_allow_html=True)
+    st.markdown(pill(label("category", o["category"]), BLUE), unsafe_allow_html=True)
 
     if o.get("needs_review"):
-        st.warning("⚠️ Low confidence — flagged for human review.")
+        st.warning(t("low_confidence_warning"))
 
     meta = st.columns(3)
-    meta[0].markdown(f"**Trigger:** {o.get('trigger_type', 'N/A')}")
-    meta[1].markdown(f"**Deadline:** {o.get('deadline') or '—'}")
-    meta[2].markdown(f"**Frequency:** {o.get('frequency') or '—'}")
+    meta[0].markdown(f"**{t('trigger_label')}:** {label('trigger_type', o.get('trigger_type', 'N/A'))}")
+    meta[1].markdown(f"**{t('deadline_label')}:** {o.get('deadline') or '—'}")
+    meta[2].markdown(f"**{t('frequency_label')}:** {o.get('frequency') or '—'}")
     if o.get("penalty"):
         st.markdown(
-            f"<span style='color:{PRIORITY_COLOR['High']};font-weight:700'>⚠️ Penalty if missed:</span> {o['penalty']}",
+            f"<span style='color:{PRIORITY_COLOR['High']};font-weight:700'>⚠️ {t('penalty_label')}:</span> {o['penalty']}",
             unsafe_allow_html=True,
         )
 
     # Risk mitigation — the "what to do about it" the stakeholder asked for.
     mit = o.get("mitigation")
     if mit and mit.get("actions"):
-        src_note = "model-suggested" if mit.get("source") == "model" else "standard playbook"
+        src_note = t("mitigation_model") if mit.get("source") == "model" else t("mitigation_rules")
         actions_html = "".join(f"<li style='margin:2px 0'>{a}</li>" for a in mit["actions"])
         st.markdown(
             f"""<div style="background:#EEF4EC;border-left:4px solid #2E7D32;border-radius:5px;padding:9px 14px;margin:8px 0;">"""
-            f"""<span style="font-weight:700;color:#1E5B2A;">🛡️ Risk mitigation</span> """
+            f"""<span style="font-weight:700;color:#1E5B2A;">{t('mitigation_header')}</span> """
             f"""<span style="color:#6B6B6B;font-size:0.8rem;">({src_note})</span>"""
             f"""<div style="color:#2C3A2E;font-size:0.88rem;margin-top:3px;">{mit.get('summary','')}</div>"""
             f"""<ul style="margin:5px 0 0 18px;color:#2C3A2E;font-size:0.88rem;">{actions_html}</ul></div>""",
             unsafe_allow_html=True,
         )
 
-    st.markdown("**Source clause** "
-                f"<span class='src'>(§ {str(o.get('source_section', 'N/A'))[:60]}, page {o.get('source_page', 'N/A')})</span>",
+    st.markdown(f"**{t('source_clause_label')}** "
+                f"<span class='src'>(§ {str(o.get('source_section', 'N/A'))[:60]}, {t('page_label')} {o.get('source_page', 'N/A')})</span>",
                 unsafe_allow_html=True)
     st.markdown(f'<div class="snippet">"{o.get("verbatim_snippet", "")}"</div>', unsafe_allow_html=True)
 
     st.write("")
-    label = "↺ Reopen" if is_done else "✓ Mark complete"
-    if st.button(label, key=f"{key_prefix}btn_{oid}"):
+    btn_label = t("reopen") if is_done else t("mark_complete")
+    if st.button(btn_label, key=f"{key_prefix}btn_{oid}"):
         if is_done:
             st.session_state.done.discard(oid)
         else:
@@ -262,16 +266,29 @@ DEMO_MSA_FILES = {
 },
 }
 with st.sidebar:
-    st.markdown(f"### 📄 IDP Agent")
-    st.caption("Master Service Agreement / Lease → compliance checklist")
+    if "lang" not in st.session_state:
+        st.session_state.lang = DEFAULT_LANGUAGE
+    lang_codes = list(SUPPORTED_LANGUAGES.keys())
+    chosen = st.selectbox(
+        t("language_label"), lang_codes,
+        format_func=lambda code: SUPPORTED_LANGUAGES[code],
+        index=lang_codes.index(st.session_state.lang),
+        key="lang_selector",
+    )
+    if chosen != st.session_state.lang:
+        st.session_state.lang = chosen
+        st.rerun()
 
-    mode = st.radio("Source", ["Demo dataset", "Upload MSA (live)"], index=0)
+    st.markdown(f"### 📄 {t('brand')}")
+    st.caption(t("sidebar_subtitle"))
+
+    mode = st.radio(t("source_label"), [t("source_demo"), t("source_upload")], index=0)
 
     data = None
     doc_profile_label = None
-    if mode == "Demo dataset":
+    if mode == t("source_demo"):
             demo_contract = st.selectbox(
-                "Select demo contract",
+                t("select_demo_contract"),
                 [
                     "Apex Properties Group MSA (English)",
                     "PlanetOrg LLC MSA — Enterprise Services (EN)",
@@ -297,30 +314,21 @@ with st.sidebar:
                 "obligations": raw,
             }
     else:
-        st.markdown("**Document type**")
+        st.markdown(f"**{t('document_type_label')}**")
         profile_choice = st.radio(
-            "Which taxonomy should the agent extract against?",
-            ["Master Service Agreement", "Lease Administration"],
+            t("document_type_question"),
+            [t("profile_msa"), t("profile_lease")],
             index=0, label_visibility="collapsed",
         )
-        profile_key = "lease" if profile_choice == "Lease Administration" else "msa"
-        doc_profile_label = profile_choice
+        profile_key = "lease" if profile_choice == t("profile_lease") else "msa"
+        doc_profile_label = "Lease Administration" if profile_key == "lease" else "MSA"
 
-        st.markdown("**Data classification**")
-        is_synthetic = st.checkbox(
-            "I confirm this is synthetic / sample data (required — the sandbox "
-            "model is not cleared for real client contracts)",
-            value=False,
-        )
+        st.markdown(f"**{t('data_classification_label')}**")
+        is_synthetic = st.checkbox(t("synthetic_checkbox"), value=False)
         if not is_synthetic:
-            st.caption(
-                "🔒 Uploads are treated as **real client data** until confirmed synthetic "
-                "above. Real data is blocked on this sandbox endpoint by design (section "
-                "5.3 / providers.assert_data_allowed) — swap to a cleared endpoint (e.g. "
-                "Falcon) for real contracts."
-            )
+            st.caption(t("real_data_caption"))
 
-        up = st.file_uploader("Upload an MSA or Lease (PDF)", type=["pdf"])
+        up = st.file_uploader(t("upload_label"), type=["pdf"])
         if up is not None:
             if up.name in DEMO_MSA_FILES:
                 meta = DEMO_MSA_FILES[up.name]
@@ -342,7 +350,7 @@ with st.sidebar:
                     "page_count": meta["page_count"],
                     "obligations": demo if isinstance(demo, list) else demo.get("obligations", demo),
                 }
-                st.success(f"✅ Extracted {len(data['obligations'])} obligations from {up.name}")
+                st.success(t("extracted_success_demo", n=len(data['obligations']), name=up.name))
             else:
                 prog = st.progress(0.0, text="Starting…")
                 try:
@@ -352,26 +360,25 @@ with st.sidebar:
                         contains_real_client_data=not is_synthetic,
                     )
                     prog.empty()
-                    st.success(f"Extracted {len(data['obligations'])} obligations.")
+                    st.success(t("extracted_success_live", n=len(data['obligations'])))
                 except Exception as e:
                     prog.empty()
-                    st.warning(f"Live run unavailable ({e}). Showing the demo dataset.")
+                    st.warning(t("live_unavailable_warning", e=e))
                     data = load_demo()
         else:
-            st.info("Upload a PDF to run the live pipeline, or switch to the demo dataset.")
+            st.info(t("upload_prompt_info"))
             data = load_demo()
 
     st.divider()
-    st.markdown("**Risk settings**")
+    st.markdown(f"**{t('risk_settings_header')}**")
     obligations_all = data if isinstance(data, list) else data["obligations"]
     cats = sorted({o["category"] for o in obligations_all})
     parties = sorted({o["responsible_party"] for o in obligations_all})
     from risk import HIGH_RISK_MONETARY_THRESHOLD, classify_risk, mitigation_for
     risk_threshold = st.slider(
-        "High-risk $ threshold",
+        t("risk_threshold_label"),
         min_value=0, max_value=100_000, value=HIGH_RISK_MONETARY_THRESHOLD, step=1_000,
-        help="A monetary penalty at or above this amount is High risk; below it, Medium. "
-             "Penalties with no stated amount stay High.",
+        help=t("risk_threshold_help"),
     )
     # Re-classify on the fly so the threshold slider is live (cheap — pure compute).
     # Non-monetary risk drivers (legal, regulatory, auto-renewal) are unaffected.
@@ -383,14 +390,20 @@ with st.sidebar:
             _o["mitigation"] = mitigation_for(_o, _typ).to_dict()
 
     st.divider()
-    st.markdown("**Filters**")
+    st.markdown(f"**{t('filters_header')}**")
 
-    f_priority = st.multiselect("Priority", ["High", "Medium", "Low"], default=["High", "Medium", "Low"])
-    f_risk = st.multiselect("Risk level", ["High", "Medium", "Low"], default=["High", "Medium", "Low"])
-    f_category = st.multiselect("Category", cats, default=cats)
-    f_party = st.multiselect("Responsible party", parties, default=parties)
-    only_review = st.checkbox("Only items needing review", value=False)
-    only_open = st.checkbox("Hide completed", value=False)
+    f_priority = st.multiselect(t("filter_priority"), ["High", "Medium", "Low"],
+                                default=["High", "Medium", "Low"],
+                                format_func=lambda v: label("priority", v))
+    f_risk = st.multiselect(t("filter_risk_level"), ["High", "Medium", "Low"],
+                            default=["High", "Medium", "Low"],
+                            format_func=lambda v: label("risk_level", v))
+    f_category = st.multiselect(t("filter_category"), cats, default=cats,
+                                format_func=lambda v: label("category", v))
+    f_party = st.multiselect(t("filter_party"), parties, default=parties,
+                             format_func=lambda v: label("responsible_party", v))
+    only_review = st.checkbox(t("filter_only_review"), value=False)
+    only_open = st.checkbox(t("filter_hide_completed"), value=False)
 
 # --------------------------------------------------------------------------- #
 # Session state for the checklist (mark-complete)
@@ -401,24 +414,20 @@ if "done" not in st.session_state:
 # --------------------------------------------------------------------------- #
 # Header
 # --------------------------------------------------------------------------- #
-st.markdown('<p class="idp-title">Intelligent Document Processing Agent</p>', unsafe_allow_html=True)
+st.markdown(f'<p class="idp-title">{t("app_title")}</p>', unsafe_allow_html=True)
 doc_name = data.get("document_name", "Sample MSA — Apex Properties Group (demo).pdf") if isinstance(data, dict) else "Sample MSA — Apex Properties Group (demo).pdf"
 page_count = data.get("page_count", 1184) if isinstance(data, dict) else 1184
 badge_html = ""
 if doc_profile_label:
     badge_color = BLUE if doc_profile_label == "MSA" else "#2E7D32"
-    badge_html = pill(doc_profile_label, badge_color) + "&nbsp;&nbsp;"
+    badge_text = t("profile_msa") if doc_profile_label == "MSA" else t("profile_lease")
+    badge_html = pill(badge_text, badge_color) + "&nbsp;&nbsp;"
 st.markdown(
     f'<p class="idp-sub">{badge_html}{doc_name} &nbsp;&nbsp; '
-    f'{page_count} pages · {len(obligations_all)} obligations extracted</p>',
+    f'{t("doc_subtitle", pages=page_count, n=len(obligations_all))}</p>',
     unsafe_allow_html=True,
 )
-st.warning(
-    "**Sandbox mode — Demo data.** Cleared for synthetic / sample contracts only. "
-    "Do not upload real client MSAs here. Production runs the identical pipeline against a "
-    "JLL-sanctioned, data-cleared endpoint (e.g. Falcon) so real contracts stay in the governed envelope.",
-    icon="🔒",
-)
+st.warning(t("sandbox_warning"), icon="🔒")
 st.write("")
 
 # --------------------------------------------------------------------------- #
@@ -433,13 +442,13 @@ done_count = len(st.session_state.done & {o["obligation_id"] for o in obligation
 pct = int(100 * done_count / max(len(obligations_all), 1))
 
 m1, m2, m3, m4, m5, m6 = st.columns(6)
-m1.metric("Obligations", len(obligations_all))
-m2.metric("🚨 High risk", n_high_risk)
-m3.metric("High priority", high)
-m4.metric("Needs review", review)
-m5.metric("Completed", f"{done_count}/{len(obligations_all)}")
-m6.metric("Categories", len({o["category"] for o in obligations_all}))
-st.progress(pct, text=f"Checklist {pct}% complete")
+m1.metric(t("metric_obligations"), len(obligations_all))
+m2.metric(t("metric_high_risk"), n_high_risk)
+m3.metric(t("metric_high_priority"), high)
+m4.metric(t("metric_needs_review"), review)
+m5.metric(t("metric_completed"), f"{done_count}/{len(obligations_all)}")
+m6.metric(t("metric_categories"), len({o["category"] for o in obligations_all}))
+st.progress(pct, text=t("checklist_progress", pct=pct))
 
 # Run cost & efficiency — only present after a live pipeline run (telemetry).
 # This is the raw material for the savings KPIs: real $ per contract, token
@@ -452,17 +461,13 @@ if run_stats:
     hit_rate = run_stats.get("cache_hit_rate", 0.0)
     wall = run_stats.get("wall_clock_s", 0.0)
     tok = run_stats.get("input_tokens", 0) + run_stats.get("output_tokens", 0)
-    with st.expander("💵 Run cost & efficiency (live run)", expanded=False):
+    with st.expander(t("cost_panel_header"), expanded=False):
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Compute cost", f"${cost:,.4f}")
-        c2.metric("Clauses processed", calls)
-        c3.metric("Cache hits", f"{cached} ({hit_rate:.0%})")
-        c4.metric("Wall-clock", f"{wall:.1f}s")
-        st.caption(
-            f"{tok:,} tokens · model {run_stats.get('model','?')}. "
-            "Cached clauses cost nothing — re-running this contract, or processing "
-            "another that shares boilerplate, reuses these results for free."
-        )
+        c1.metric(t("cost_compute"), f"${cost:,.4f}")
+        c2.metric(t("cost_clauses"), calls)
+        c3.metric(t("cost_cache_hits"), f"{cached} ({hit_rate:.0%})")
+        c4.metric(t("cost_wall_clock"), f"{wall:.1f}s")
+        st.caption(t("cost_caption", tok=tok, model=run_stats.get('model', '?')))
 
 # Power BI portfolio panel — shows the persistent, dashboard-ready data layer.
 # Present whenever the portfolio store has data (any prior live run).
@@ -472,18 +477,13 @@ try:
     _ps = PortfolioStore()
     if _os.path.exists(_ps.contracts_csv):
         _psum = _ps.summary()
-        with st.expander("📊 Power BI portfolio (auto-updated)", expanded=False):
+        with st.expander(t("pbi_panel_header"), expanded=False):
             pc1, pc2, pc3, pc4 = st.columns(4)
-            pc1.metric("Contracts", _psum["contracts"])
-            pc2.metric("Obligations", _psum["obligations"])
-            pc3.metric("High risk", _psum["high_risk"])
-            pc4.metric("Penalty exposure", f"${_psum['total_penalty_exposure_usd']:,.0f}")
-            st.caption(
-                "Every processed contract is appended to a Power BI-ready dataset — no "
-                "manual export. Point Power BI at the store folder (Get Data → Folder) "
-                "or the read-only API (Get Data → Web); it refreshes on Power BI's "
-                "schedule. See POWERBI.md for the 5-minute setup."
-            )
+            pc1.metric(t("pbi_contracts"), _psum["contracts"])
+            pc2.metric(t("pbi_obligations"), _psum["obligations"])
+            pc3.metric(t("pbi_high_risk"), _psum["high_risk"])
+            pc4.metric(t("pbi_penalty_exposure"), f"${_psum['total_penalty_exposure_usd']:,.0f}")
+            st.caption(t("pbi_caption"))
             st.code(
                 f"Folder:  {_os.path.abspath(_ps.root)}\n"
                 f"  • contracts.csv   (one row per contract — the dimension table)\n"
@@ -500,12 +500,19 @@ except Exception:
 if n_high_risk:
     from collections import Counter
     type_counts = Counter(o.get("risk_type", "None") for o in high_risk)
-    breakdown = " · ".join(f"{t}: {c}" for t, c in type_counts.most_common())
+    breakdown = " · ".join(f"{label('risk_type', tt)}: {c}" for tt, c in type_counts.most_common())
+    _lang = st.session_state.lang
+    if _lang == "pt":
+        _oes = "ões" if n_high_risk != 1 else "ão"
+        _em = "em" if n_high_risk != 1 else ""
+        title = t("high_risk_banner_title", n=n_high_risk, oes=_oes, em=_em)
+    else:
+        title = t("high_risk_banner_title", n=n_high_risk, s="s" if n_high_risk != 1 else "")
     st.markdown(
         f"""<div style="background:#FCE8E6;border:1px solid {PRIORITY_COLOR['High']};border-left:6px solid {PRIORITY_COLOR['High']};border-radius:6px;padding:12px 16px;margin:8px 0 2px 0;">"""
-        f"""<span style="font-weight:800;color:{PRIORITY_COLOR['High']};font-size:1.02rem;">🚨 {n_high_risk} high-risk obligation{'s' if n_high_risk != 1 else ''}</span>"""
-        f"""<span style="color:#3A4252;"> require attention — see the <b>🚨 High Risk</b> tab for each item and its recommended mitigation.</span>"""
-        f"""<div style="margin-top:5px;color:#5A2A25;font-size:0.85rem;">By risk type — {breakdown}</div></div>""",
+        f"""<span style="font-weight:800;color:{PRIORITY_COLOR['High']};font-size:1.02rem;">{title}</span>"""
+        f"""<span style="color:#3A4252;"> {t('high_risk_banner_body')}</span>"""
+        f"""<div style="margin-top:5px;color:#5A2A25;font-size:0.85rem;">{t('high_risk_banner_breakdown')} {breakdown}</div></div>""",
         unsafe_allow_html=True,
     )
 
@@ -524,7 +531,7 @@ if with_penalty:
         for e in penalty_examples
     )
     st.markdown(
-        f"""<div style="background:#FBEDEC;border-left:5px solid {PRIORITY_COLOR['High']};border-radius:6px;padding:11px 16px;margin:8px 0 2px 0;"><span style="font-weight:700;color:{PRIORITY_COLOR['High']};">⚠️ Cost if missed</span><span style="color:#3A4252;"> — {with_penalty} of {len(obligations_all)} obligations carry a financial penalty if the detail is overlooked. For example:</span><ul style="margin:6px 0 0 18px;color:#3A4252;font-size:0.88rem;">{items}</ul></div>""",
+        f"""<div style="background:#FBEDEC;border-left:5px solid {PRIORITY_COLOR['High']};border-radius:6px;padding:11px 16px;margin:8px 0 2px 0;"><span style="font-weight:700;color:{PRIORITY_COLOR['High']};">{t('cost_missed_title')}</span><span style="color:#3A4252;"> {t('cost_missed_body', n=with_penalty, total=len(obligations_all))}</span><ul style="margin:6px 0 0 18px;color:#3A4252;font-size:0.88rem;">{items}</ul></div>""",
         unsafe_allow_html=True,
     )
 st.write("")
@@ -545,9 +552,9 @@ filtered.sort(key=lambda o: (PRIORITY_ORDER.get(o["priority"], 9), o.get("source
 # --------------------------------------------------------------------------- #
 # Tabs: high risk + checklist + table + export
 # --------------------------------------------------------------------------- #
-risk_tab_label = f"🚨 High Risk ({n_high_risk})" if n_high_risk else "🚨 High Risk"
+risk_tab_label = f"{t('tab_high_risk')} ({n_high_risk})" if n_high_risk else t('tab_high_risk')
 tab_risk, tab_list, tab_table, tab_export = st.tabs(
-    [risk_tab_label, "✅ Checklist", "📋 Table", "⬇️ Export"]
+    [risk_tab_label, t('tab_checklist'), t('tab_table'), t('tab_export')]
 )
 
 RISK_ORDER = {"High": 0, "Medium": 1, "Low": 2, "None": 3}
@@ -559,20 +566,23 @@ with tab_risk:
     hr = [o for o in filtered if o.get("risk_level") == "High"]
     hr.sort(key=lambda o: (o.get("risk_type", "None"), PRIORITY_ORDER.get(o["priority"], 9)))
     if not hr:
-        st.success("✅ No high-risk obligations in the current filter set.")
+        st.success(t("no_high_risk"))
     else:
         done_hr = sum(1 for o in hr if o["obligation_id"] in st.session_state.done)
-        st.markdown(
-            f"**{len(hr)} high-risk obligation{'s' if len(hr) != 1 else ''}** "
-            f"· {done_hr}/{len(hr)} addressed. Each carries recommended mitigation below."
-        )
+        if st.session_state.lang == "pt":
+            _oes = "ões" if len(hr) != 1 else "ão"
+            _s = "s" if len(hr) != 1 else ""
+            st.markdown(t("high_risk_summary", n=len(hr), oes=_oes, s=_s, done=done_hr))
+        else:
+            st.markdown(t("high_risk_summary", n=len(hr), s="s" if len(hr) != 1 else "", done=done_hr))
         st.progress(int(100 * done_hr / max(len(hr), 1)),
-                    text=f"High-risk items addressed: {done_hr}/{len(hr)}")
+                    text=t("high_risk_progress", done=done_hr, n=len(hr)))
         for o in hr:
             oid = o["obligation_id"]
             is_done = oid in st.session_state.done
             icon = RISK_TYPE_ICON.get(o.get("risk_type", "None"), "🚨")
-            title = f"{icon}  [{o.get('risk_type','')}]  {o['description']}"
+            rtype_label = label("risk_type", o.get('risk_type', ''))
+            title = f"{icon}  [{rtype_label}]  {o['description']}"
             if is_done:
                 title = f"~~{title}~~"
             with st.expander(title, expanded=False):
@@ -580,7 +590,7 @@ with tab_risk:
 
 with tab_list:
     if not filtered:
-        st.info("No obligations match the current filters.")
+        st.info(t("no_obligations_match"))
     for o in filtered:
         oid = o["obligation_id"]
         is_done = oid in st.session_state.done
@@ -607,9 +617,9 @@ with tab_table:
         show_cols = [c for c in show_cols if c in df.columns]
         st.dataframe(df[show_cols], width="stretch", hide_index=True)
     else:
-        st.info("No rows for the current filters.")
+        st.info(t("no_rows_filters"))
 with tab_export:
-    st.markdown("Export the **filtered** checklist for the CRE team.")
+    st.markdown(t("export_intro"))
     df_all = pd.DataFrame(filtered)
     if not df_all.empty:
         df_all["status"] = df_all["obligation_id"].apply(
@@ -642,18 +652,18 @@ with tab_export:
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
             df_all.to_excel(writer, index=False, sheet_name="Obligations")
         st.download_button(
-            "⬇️ Download Excel (Smartsheet-ready)",
+            t("download_excel"),
             data=buf.getvalue(),
             file_name="msa_obligations_checklist.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         # CSV
         st.download_button(
-            "⬇️ Download CSV",
+            t("download_csv"),
             data=df_all.to_csv(index=False).encode("utf-8"),
             file_name="msa_obligations_checklist.csv",
             mime="text/csv",
         )
-        st.caption(f"{len(df_all)} obligations in current export (after filters).")
+        st.caption(t("export_count", n=len(df_all)))
     else:
-        st.info("Nothing to export with the current filters.")
+        st.info(t("nothing_to_export"))
